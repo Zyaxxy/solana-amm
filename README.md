@@ -22,6 +22,7 @@ The Solana AMM is a smart contract system that implements a decentralized exchan
 ### 2. Liquidity Management
 - **Deposit**: Add both tokens to the pool and receive LP tokens representing your share
 - **Withdraw**: Burn LP tokens to retrieve your share of both tokens plus accrued fees
+- **Burn**: Burn LP tokens directly for use in combined transactions
 - Proportional liquidity management using constant product formula (x × y = k)
 
 ### 3. Token Swaps
@@ -56,7 +57,18 @@ pub fn initialize(ctx: Context<Initialize>, seed: u64, fee: u16, authority: Opti
 pub fn deposit(ctx: Context<Deposit>, amount: u64, max_x: u64, max_y: u64) -> Result<()>
 pub fn withdraw(ctx: Context<Withdraw>, lp_amount: u64, min_x: u64, min_y: u64) -> Result<()>
 pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64, is_x: bool) -> Result<()>
+pub fn burn(ctx: Context<Burn>, amount: u64) -> Result<()>
+pub fn withdraw_ix(ctx: Context<WithdrawIx>, amount: u64, min_x: u64, min_y: u64) -> Result<()>
 ```
+
+### Instruction Introspection
+
+The `withdraw_ix` instruction implements **cross-program instruction verification** using the Instructions Sysvar. This ensures atomic execution by verifying that a valid `burn` instruction is included in the same transaction before processing the withdrawal:
+
+- Verifies the burn instruction program ID matches the AMM program
+- Validates the burn instruction accounts match the withdrawal accounts
+- Checks the burn amount matches the withdrawal amount
+- Ensures the user, config, LP mint, and token program keys align
 
 ## Testing
 
@@ -64,14 +76,14 @@ The program includes comprehensive integration tests covering:
 
 ### Test Suite
 
-✅ **Pool Initialization** - Verifies correct pool creation and state setup
-✅ **Liquidity Deposit** - Tests adding liquidity and LP token minting
-✅ **Token Swap (X → Y)** - Validates forward token exchange
-✅ **Token Swap (Y → X)** - Validates reverse token exchange
-✅ **Liquidity Withdrawal** - Tests LP token burning and token redemption
-✅ **Pool State Verification** - Confirms pool state consistency
-✅ **Zero Amount Error Handling** - Validates error handling for invalid inputs
-✅ **Swap Error Handling** - Ensures proper error responses
+**Pool Initialization** - Verifies correct pool creation and state setup
+**Liquidity Deposit** - Tests adding liquidity and LP token minting
+**Token Swap (X → Y)** - Validates forward token exchange
+**Token Swap (Y → X)** - Validates reverse token exchange
+**Liquidity Withdrawal** - Tests LP token burning and token redemption
+**Pool State Verification** - Confirms pool state consistency
+**Zero Amount Error Handling** - Validates error handling for invalid inputs
+**Swap Error Handling** - Ensures proper error responses
 
 ### Running Tests
 
@@ -80,7 +92,7 @@ The program includes comprehensive integration tests covering:
 anchor test
 
 # Run tests with verbose output
-anchor test -- --nocapture
+anchor test
 ```
 
 ### Test Results
@@ -198,7 +210,9 @@ solana-amm/
 │               ├── initialize.rs
 │               ├── deposit.rs
 │               ├── swap.rs
-│               └── withdraw.rs
+│               ├── withdraw.rs
+│               ├── burn.rs
+│               └── withdraw_ix.rs
 ├── tests/
 │   └── solana-amm.ts
 ├── migrations/
