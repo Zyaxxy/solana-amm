@@ -38,6 +38,12 @@ pub enum AmmError {
     ZeroBalance,
     #[msg("Invalid fee")]
     InvalidFee,
+    #[msg("Invalid instruction order")]
+    InvalidInstructionOrder,
+    #[msg("Invalid burn instruction")]
+    InvalidBurnInstruction,
+    #[msg("Insufficient liquidity")]
+    InsufficientLiquidity,
 }
 
 impl From<CurveError> for AmmError {

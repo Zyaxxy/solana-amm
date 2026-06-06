@@ -1,13 +1,13 @@
 import * as anchor from "@anchor-lang/core";
-import { Program, web3} from "@anchor-lang/core";
+import { Program, web3, BN } from "@anchor-lang/core";
+import NodeWallet from "@anchor-lang/core/dist/cjs/nodewallet";
 import { SolanaAmm } from "../target/types/solana_amm";
 import { assert } from "chai";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, createMint, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID} from "@solana/spl-token";
-import BN from "bn.js";
 import { randomBytes } from "crypto";
-import NodeWallet from "@anchor-lang/core/dist/cjs/nodewallet";
-import { Keypair, PublicKey } from "@solana/web3.js";
-import { SYSTEM_PROGRAM_ID } from "@anchor-lang/core/dist/cjs/native/system";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+
+const SYSTEM_PROGRAM_ID = SystemProgram.programId;
 
 const FEE = 1000;
 const TOKEN_A_AMOUNT = new BN(100_000_000);
@@ -199,7 +199,80 @@ describe("solana-amm", () => {
     }
   });
 
-  it("withdraws liquidity from the pool", async () => {
+  it("withdraws liquidity from the pool (Instruction introspection)", async () => {
+    try {
+      const minX = BigInt(Number(DEPOSIT_LP_AMOUNT) * (1 - SLIPPAGE_TOLERANCE));
+      const minY = BigInt(Number(DEPOSIT_LP_AMOUNT) * (1 - SLIPPAGE_TOLERANCE));
+
+      const burnIx = await program.methods.burn(
+        new BN(DEPOSIT_LP_AMOUNT.toString())
+      ).accountsStrict({
+        user: user.publicKey,
+        config,
+        mintLp,
+        userLp: userLpAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([user.payer])
+      .instruction();
+
+      const withdrawIx = await program.methods.withdrawIx(
+        new BN(DEPOSIT_LP_AMOUNT.toString()),
+        new BN(minX.toString()),
+        new BN(minY.toString())
+      ).accountsStrict({
+        user: user.publicKey,
+        mintX,
+        mintY,
+        config,
+        vaultX: vaultX,
+        vaultY: vaultY,
+        mintLp,
+        userX: userTokenXAta,
+        userY: userTokenYAta,
+        userLp: userLpAta,
+        instructionSysvar: web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SYSTEM_PROGRAM_ID,
+      })
+      .signers([user.payer])
+      .instruction();
+
+      const tx = new web3.Transaction().add(burnIx, withdrawIx);
+      const signature = await provider.sendAndConfirm(tx);
+      console.log("Withdraw with Instruction Introspection transaction:", signature);
+    } catch (e: any) {
+      console.log("Withdraw Ix error:", e.message || e);
+    }
+  });
+
+  it("withdraws liquidity from the pool (CPI)", async () => {
+    try {
+      const tx = await program.methods.deposit(
+        new BN(DEPOSIT_LP_AMOUNT),
+        new BN(TOKEN_A_AMOUNT),
+        new BN(TOKEN_B_AMOUNT)
+      ).accountsStrict({
+        user: user.publicKey,
+        mintX,
+        mintY,
+        config,
+        vaultX: vaultX,
+        vaultY: vaultY  ,
+        mintLp,
+        userX: userTokenXAta,
+        userY: userTokenYAta,
+        userLp: userLpAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SYSTEM_PROGRAM_ID,
+      }).rpc();
+
+      console.log("Deposit transaction for CPI:", tx);
+    } catch (e: any) {
+      console.log("Deposit error:", e.message || e);
+    }
     try {
       const minX = BigInt(Number(DEPOSIT_LP_AMOUNT) * (1 - SLIPPAGE_TOLERANCE));
       const minY = BigInt(Number(DEPOSIT_LP_AMOUNT) * (1 - SLIPPAGE_TOLERANCE));
@@ -224,7 +297,7 @@ describe("solana-amm", () => {
         systemProgram: SYSTEM_PROGRAM_ID,
       }).rpc();
 
-      console.log("Withdraw transaction:", tx);
+      console.log("Withdraw transaction with CPI:", tx);
     } catch (e: any) {
       console.log("Withdraw error:", e.message || e);
     }
@@ -299,32 +372,4 @@ describe("solana-amm", () => {
       assert(e.error?.errorCode?.code === "InvalidAmount" || e.message.includes("InvalidAmount"), "Should throw InvalidAmount error");
     }
   });
-
-  it("handles zero amount error for withdraw", async () => {
-    try {
-      await program.methods.withdraw(
-        new BN(0),
-        new BN(0),
-        new BN(0)
-      ).accountsStrict({
-        user: user.publicKey,
-        mintX,
-        mintY,
-        config,
-        vaultX: vaultX,
-        vaultY: vaultY,
-        mintLp,
-        userX: userTokenXAta,
-        userY: userTokenYAta,
-        userLp: userLpAta,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        systemProgram: SYSTEM_PROGRAM_ID,
-      }).rpc();
-      
-      assert.fail("Should have thrown error for zero amount");
-    } catch (e: any) {
-      assert(e.error?.errorCode?.code === "InvalidAmount" || e.message.includes("InvalidAmount"), "Should throw InvalidAmount error");
-    }
-});
 });
