@@ -80,9 +80,9 @@ impl <'info> Swap<'info> {
         };
 
         let swap_result = curve.swap(p, amount_in, min_amount_out).map_err(|_| AmmError::SlippageExceeded)?;       
-        self.deposit_tokens( true,  swap_result.deposit)?;
-        self.withdraw_tokens( false,  swap_result.withdraw)
-        
+        self.deposit_tokens(is_x, swap_result.deposit)?;
+        self.withdraw_tokens(is_x, swap_result.withdraw)
+            
     }
     pub fn withdraw_tokens(&self, is_x: bool, amount: u64)-> Result<()> {
         let (from, to)= match is_x {
